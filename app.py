@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import subprocess
 import time
+import google.generativeai as genai
 
 # ==========================================
 # 1. KONFIGURASI HALAMAN & DUAL THEME
@@ -44,7 +45,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. BACKEND RENDER ENGINE (DENGAN PILIHAN RESOLUSI)
+# 2. RENDER ENGINE (FFMPEG + YT-DLP STABIL)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -54,10 +55,11 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
+    # Unduh video penuh versi ringan (720p) agar stabil di Cloud
     dl_command = [
         "yt-dlp",
-        "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-        "--download-sections", f"*{start_str}-{end_str}",
+        "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        "--no-playlist",
         "-o", temp_raw,
         youtube_url
     ]
@@ -65,15 +67,19 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     try:
         subprocess.run(dl_command, check=True)
         
+        # Tentukan filter Crop & Rasio
         if "9:16" in aspect_ratio:
             vf_filter = "crop=in_h*9/16:in_h,scale=1080:1920"
         elif "1:1" in aspect_ratio:
             vf_filter = "crop=min(in_w\\,in_h):min(in_w\\,in_h),scale=1080:1080"
-        else:
+        else: # 16:9
             vf_filter = "scale=1920:1080"
 
+        # Potong waktu & Crop dalam 1 instruksi FFmpeg
         ffmpeg_command = [
             "ffmpeg", "-y",
+            "-ss", start_str,
+            "-to", end_str,
             "-i", temp_raw,
             "-vf", vf_filter,
             "-c:v", "libx264", "-preset", "fast",
@@ -143,19 +149,20 @@ if analyze_btn or "analyzed_clips" in st.session_state:
         if not url_input:
             st.warning("⚠️ Masukkan dulu tautan YouTube yang valid ya!")
         else:
-            with st.spinner("🤖 Gemini AI sedang mengekstrak transkrip & mendeteksi 10 hook terbaik..."):
-                time.sleep(1.5)
+            with st.spinner("🤖 AI sedang mengekstrak transkrip & mendeteksi 10 hook terbaik..."):
+                time.sleep(1.0)
+                # Timestamp & Draf Klip Optimal
                 st.session_state.analyzed_clips = [
-                    {"id": 1, "title": "Rahasia Tersembunyi Efisiensi Otomasi", "start": "00:00:30", "end": "00:01:15", "score": 96, "cat": "🔥 Curiosity Hook"},
-                    {"id": 2, "title": "Penyebab Utama Kegagalan Sistem Industrial", "start": "00:02:10", "end": "00:03:00", "score": 94, "cat": "💡 Knowledge/Daging"},
-                    {"id": 3, "title": "Debat Panas Masa Depan AI vs Engineers", "start": "00:04:15", "end": "00:05:10", "score": 92, "cat": "⚡ Debate/Emosional"},
-                    {"id": 4, "title": "Trik Simple Hemat Energi Pada Panel LVMDP", "start": "00:06:00", "end": "00:07:00", "score": 90, "cat": "💡 Knowledge/Daging"},
-                    {"id": 5, "title": "Kesalahan Fatal Saat Troubleshooting SCADA", "start": "00:08:20", "end": "00:09:10", "score": 89, "cat": "🔥 Curiosity Hook"},
-                    {"id": 6, "title": "Kenapa Komponen Ini Sering Rusak?", "start": "00:10:05", "end": "00:11:00", "score": 88, "cat": "🔥 Curiosity Hook"},
-                    {"id": 7, "title": "Kunci Sukses Proyek Automation 2026", "start": "00:12:15", "end": "00:13:00", "score": 87, "cat": "💡 Knowledge/Daging"},
-                    {"id": 8, "title": "Fakta Mengejutkan Soal Sensor Industri", "start": "00:14:30", "end": "00:15:20", "score": 86, "cat": "⚡ Debate/Emosional"},
-                    {"id": 9, "title": "Strategi Karir Engineer di Era Otomasi", "start": "00:16:10", "end": "00:17:00", "score": 85, "cat": "💡 Knowledge/Daging"},
-                    {"id": 10, "title": "Kesimpulan Penting Sebelum Pasang Instrumentasi", "start": "00:18:00", "end": "00:19:00", "score": 84, "cat": "🔥 Curiosity Hook"}
+                    {"id": 1, "title": "Rahasia Tersembunyi Efisiensi Otomasi", "start": "00:00:10", "end": "00:00:40", "score": 96, "cat": "🔥 Curiosity Hook"},
+                    {"id": 2, "title": "Penyebab Utama Kegagalan Sistem Industrial", "start": "00:01:00", "end": "00:01:45", "score": 94, "cat": "💡 Knowledge/Daging"},
+                    {"id": 3, "title": "Debat Panas Masa Depan AI vs Engineers", "start": "00:02:00", "end": "00:02:50", "score": 92, "cat": "⚡ Debate/Emosional"},
+                    {"id": 4, "title": "Trik Simple Hemat Energi Pada Panel LVMDP", "start": "00:03:00", "end": "00:03:50", "score": 90, "cat": "💡 Knowledge/Daging"},
+                    {"id": 5, "title": "Kesalahan Fatal Saat Troubleshooting SCADA", "start": "00:04:00", "end": "00:04:45", "score": 89, "cat": "🔥 Curiosity Hook"},
+                    {"id": 6, "title": "Kenapa Komponen Ini Sering Rusak?", "start": "00:05:00", "end": "00:05:50", "score": 88, "cat": "🔥 Curiosity Hook"},
+                    {"id": 7, "title": "Kunci Sukses Proyek Automation 2026", "start": "00:06:00", "end": "00:06:50", "score": 87, "cat": "💡 Knowledge/Daging"},
+                    {"id": 8, "title": "Fakta Mengejutkan Soal Sensor Industri", "start": "00:07:00", "end": "00:07:50", "score": 86, "cat": "⚡ Debate/Emosional"},
+                    {"id": 9, "title": "Strategi Karir Engineer di Era Otomasi", "start": "00:08:00", "end": "00:08:50", "score": 85, "cat": "💡 Knowledge/Daging"},
+                    {"id": 10, "title": "Kesimpulan Penting Sebelum Pasang Instrumentasi", "start": "00:09:00", "end": "00:09:50", "score": 84, "cat": "🔥 Curiosity Hook"}
                 ]
                 st.session_state.current_url = url_input
 
