@@ -54,7 +54,6 @@ if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 def check_ffmpeg_installed():
-    """Memeriksa apakah FFmpeg aktif di server"""
     try:
         result = subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         return result.returncode == 0
@@ -113,10 +112,10 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Menggunakan opsi yt-dlp dengan format universal aman dari blokir server
+    # Menggunakan format universal tanpa pembatasan ekstensi agar yt-dlp lebih fleksibel
     dl_command = [
         "yt-dlp",
-        "-f", "best[ext=mp4]/best",
+        "-f", "bv*[height<=720]+ba/b[height<=720] / bv*+ba/b",
         "--no-playlist",
         "--geo-bypass",
         "-o", temp_raw,
@@ -134,7 +133,6 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
         return None
 
     try:
-        # Tentukan filter crop rasio aspek
         if "9:16" in aspect_ratio:
             vf_filter = "crop=in_h*9/16:in_h,scale=1080:1920"
         elif "1:1" in aspect_ratio:
@@ -142,7 +140,6 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
         else:
             vf_filter = "scale=1920:1080"
 
-        # Eksekusi pemotongan video menggunakan FFmpeg
         ffmpeg_command = [
             "ffmpeg", "-y",
             "-ss", start_str,
@@ -176,7 +173,6 @@ with col_head2:
         st.session_state.theme = theme_toggle
         st.rerun()
 
-# Indikator status FFmpeg di server
 if check_ffmpeg_installed():
     st.sidebar.success("✅ FFmpeg Aktif di Server")
 else:
