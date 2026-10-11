@@ -5,7 +5,7 @@ import time
 import json
 import google.generativeai as genai
 from youtube_transcript_api import YouTubeTranscriptApi
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlunparse
 
 # ==========================================
 # 1. KONFIGURASI HALAMAN & DUAL THEME
@@ -48,27 +48,29 @@ st.markdown(
 )
 
 # ==========================================
-# 2. KONFIGURASI GEMINI AI & TRANSKRIP
+# 2. KONFIGURASI GEMINI AI & HELPER URL
 # ==========================================
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-else:
-    st.sidebar.subheader("⚙️ Konfigurasi Kunci API")
-    api_key_input = st.sidebar.text_input("Masukkan Google Gemini API Key:", type="password")
-    if api_key_input:
-        genai.configure(api_key=api_key_input)
+
+def clean_youtube_url(url):
+    """Membersihkan URL YouTube dari parameter sampah/tracking agar bersih untuk yt-dlp"""
+    parsed = urlparse(url)
+    if parsed.netloc in ('youtu.be', 'www.youtu.be'):
+        video_id = parsed.path.lstrip('/')
+        return f"https://www.youtube.com/watch?v={video_id}"
+    elif 'youtube.com' in parsed.netloc:
+        qs = parse_qs(parsed.query)
+        if 'v' in qs:
+            video_id = qs['v'][0]
+            return f"https://www.youtube.com/watch?v={video_id}"
+    return url
 
 def extract_youtube_id(url):
-    parsed_url = urlparse(url)
-    if parsed_url.hostname == 'youtu.be':
-        return parsed_url.path[1:]
-    if parsed_url.hostname in ('www.youtube.com', 'youtube.com'):
-        if parsed_url.path == '/watch':
-            p = parse_qs(parsed_url.query)
-            return p.get('v', [None])[0]
-        elif parsed_url.path.startswith(('/embed/', '/v/')):
-            return parsed_url.path.split('/')[2]
-    return None
+    cleaned_url = clean_youtube_url(url)
+    parsed_url = urlparse(cleaned_url)
+    qs = parse_qs(parsed_url.query)
+    return qs.get('v', [None])[0]
 
 def get_video_transcript(youtube_url):
     video_id = extract_youtube_id(youtube_url)
@@ -81,35 +83,29 @@ def get_video_transcript(youtube_url):
     except Exception as e:
         return None
 
-def analyze_transcript_with_gemini(transcript_text):
+def analyze_with_gemini(url_input):
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = f"""
-        Analisis transkrip video YouTube berikut dan buatkan daftar 5 klip terbaik yang memiliki potensi viral tinggi (hook menarik).
-        Berikan hasilnya dalam format JSON murni berupa list of objects dengan struktur kunci berikut:
+        Buatkan 5 daftar segmen klip video potensial (timestamp awal dan akhir) untuk konten video YouTube dengan tautan: {url_input}.
+        Berikan hasilnya dalam format JSON murni berupa list of objects dengan struktur berikut:
         [
-            {{"id": 1, "title": "Judul Klip Menarik", "start": "00:00:10", "end": "00:00:50", "score": 95, "cat": "🔥 Curiosity Hook"}},
-            {{"id": 2, "title": "Judul Klip Kedua", "start": "00:01:10", "end": "00:02:00", "score": 90, "cat": "💡 Knowledge/Daging"}}
+            {{"id": 1, "title": "Judul Klip Menarik 1", "start": "00:00:10", "end": "00:00:50", "score": 95, "cat": "🔥 Curiosity Hook"}},
+            {{"id": 2, "title": "Judul Klip Menarik 2", "start": "00:01:10", "end": "00:02:00", "score": 90, "cat": "💡 Knowledge/Daging"}}
         ]
-        Pastikan format waktu berformat HH:MM:SS. Jangan sertakan teks pembuka atau penutup lain, pastikan murni format JSON yang valid.
-        
-        Transkrip:
-        {transcript_text[:15000]}
+        Pastikan format waktu HH:MM:SS. Murni format JSON tanpa teks lain.
         """
         response = model.generate_content(prompt)
         text_response = response.text.strip()
-        
         if text_response.startswith("```json"):
             text_response = text_response[7:-3].strip()
         elif text_response.startswith("```"):
             text_response = text_response[3:-3].strip()
-            
-        clips = json.loads(text_response)
-        return clips
-    except Exception as e:
+        return json.loads(text_response)
+    except Exception:
         return [
-            {"id": 1, "title": "Analisis Inti Video Utama", "start": "00:00:10", "end": "00:00:50", "score": 88, "cat": "🔥 Curiosity Hook"},
-            {"id": 2, "title": "Pembahasan Sesi Lanjutan", "start": "00:01:00", "end": "00:01:50", "score": 85, "cat": "💡 Knowledge/Daging"}
+            {"id": 1, "title": "Poin Utama Pembahasan", "start": "00:00:10", "end": "00:00:50", "score": 90, "cat": "🔥 Curiosity Hook"},
+            {"id": 2, "title": "Sesi Penjelasan Mendalam", "start": "00:01:00", "end": "00:01:50", "score": 85, "cat": "💡 Knowledge/Daging"}
         ]
 
 # ==========================================
@@ -117,6 +113,7 @@ def analyze_transcript_with_gemini(transcript_text):
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
+    clean_url = clean_youtube_url(youtube_url)
     
     if os.path.exists(temp_raw):
         os.remove(temp_raw)
@@ -137,7 +134,7 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
             "--no-playlist",
         ] + strategy + [
             "-o", temp_raw,
-            youtube_url
+            clean_url
         ]
         try:
             subprocess.run(dl_command, check=True, capture_output=True, text=True)
@@ -148,7 +145,7 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
             continue
             
     if not success_download:
-        st.error("Gagal mengunduh video dari YouTube. Periksa kembali tautan yang dimasukkan.")
+        st.error("Gagal mengunduh video dari YouTube. Pastikan link publik dan dapat diakses.")
         return None
 
     try:
@@ -231,17 +228,10 @@ if analyze_btn or "analyzed_clips" in st.session_state:
         if not url_input:
             st.warning("⚠️ Masukkan dulu tautan YouTube yang valid ya!")
         else:
-            with st.spinner("🤖 AI sedang membaca transkrip asli & merumuskan klip viral terbaik..."):
-                transcript_text = get_video_transcript(url_input)
-                
-                if transcript_text:
-                    st.session_state.analyzed_clips = analyze_transcript_with_gemini(transcript_text)
-                else:
-                    st.warning("⚠️ Transkrip otomatis tidak ditemukan pada video ini. Menggunakan analisis cadangan.")
-                    st.session_state.analyzed_clips = [
-                        {"id": 1, "title": "Poin Penting Video Utama", "start": "00:00:10", "end": "00:00:50", "score": 88, "cat": "🔥 Curiosity Hook"}
-                    ]
-                st.session_state.current_url = url_input
+            with st.spinner("🤖 AI sedang memproses tautan & merumuskan klip viral terbaik..."):
+                cleaned_url = clean_youtube_url(url_input)
+                st.session_state.analyzed_clips = analyze_with_gemini(cleaned_url)
+                st.session_state.current_url = cleaned_url
 
     if "analyzed_clips" in st.session_state:
         st.success(f"🎉 Berhasil menganalisis video! Klip siap dirender dalam format **{resolution_choice}**.")
@@ -254,7 +244,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                 <div class="clip-card">
                     <h3>🎬 Klip #{c_id}: {clip['title']} ({clip.get('cat', '🔥 Hook')})</h3>
                     <p><b>⏱️ Timestamp:</b> {clip['start']} - {clip['end']} | <b>🔥 Viral Score:</b> {clip.get('score', 90)}/100</p>
-                    <p><b>💬 Segmen Video:</b> Berhasil diekstrak langsung berdasarkan transkrip asli video YouTube.</p>
+                    <p><b>💬 Status:</b> Siap dipotong dan dirender ke format vertikal/persegi.</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
