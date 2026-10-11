@@ -45,7 +45,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. RENDER ENGINE (STABLE SINGLE FORMAT & IOS CLIENT)
+# 2. RENDER ENGINE (ROBUST MULTI-CLIENT FALLBACK & FFMPEG)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -55,19 +55,38 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Menggunakan single format & client ios agar aman di Cloud IP
-    dl_command = [
-        "yt-dlp",
-        "-f", "best[height<=720]/best",
-        "--no-playlist",
-        "--extractor-args", "youtube:player_client=ios",
-        "-o", temp_raw,
-        youtube_url
+    # Daftar strategi klien yt-dlp untuk mencegah pemblokiran IP Cloud secara otomatis
+    client_strategies = [
+        ["--extractor-args", "youtube:player_client=android"],
+        ["--extractor-args", "youtube:player_client=ios"],
+        ["--extractor-args", "youtube:player_client=web"]
     ]
     
-    try:
-        subprocess.run(dl_command, check=True)
+    success_download = False
+    
+    for strategy in client_strategies:
+        dl_command = [
+            "yt-dlp",
+            "-f", "best[height<=720]/best",
+            "--no-playlist",
+        ] + strategy + [
+            "-o", temp_raw,
+            youtube_url
+        ]
         
+        try:
+            subprocess.run(dl_command, check=True, capture_output=True, text=True)
+            if os.path.exists(temp_raw) and os.path.getsize(temp_raw) > 0:
+                success_download = True
+                break
+        except subprocess.CalledProcessError:
+            continue
+            
+    if not success_download:
+        st.error("Gagal mengunduh video dari YouTube. Pastikan tautan aktif atau perbarui versi yt-dlp.")
+        return None
+
+    try:
         # Tentukan filter Crop & Rasio
         if "9:16" in aspect_ratio:
             vf_filter = "crop=in_h*9/16:in_h,scale=1080:1920"
@@ -95,7 +114,7 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
             
         return output_filename
     except Exception as e:
-        st.error(f"Gagal merender video: {e}")
+        st.error(f"Gagal merender video via FFmpeg: {e}")
         return None
 
 # ==========================================
@@ -183,7 +202,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                 
                 col_btn1, col_btn2 = st.columns([1, 2])
                 with col_btn1:
-                    render_trigger = st.button(f"🎬 Render ({resolution_choice.split()[0]}) (Klip #{c_id})", key=f"render_{c_id}", type="primary")
+                    render_trigger = st.button(f"🎬 Render Klip #{c_id}", key=f"render_{c_id}", type="primary")
                 
                 if render_trigger:
                     with st.spinner(f"⚡ FFmpeg sedang merender Klip #{c_id} ke format {resolution_choice}... Mohon tunggu!"):
@@ -199,9 +218,9 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                             st.success(f"✨ Klip #{c_id} Berhasil Dirender!")
                             with open(rendered_path, "rb") as file_data:
                                 st.download_button(
-                                    label=f"📥 Download File MP4 ({resolution_choice.split()[0]})",
+                                    label=f"📥 Download File MP4",
                                     data=file_data,
-                                    file_name=f"HookCraft_Clip_{c_id}_{resolution_choice.split()[0].replace(':', '')}.mp4",
+                                    file_name=f"HookCraft_Clip_{c_id}.mp4",
                                     mime="video/mp4",
                                     key=f"dl_{c_id}"
                                 )
