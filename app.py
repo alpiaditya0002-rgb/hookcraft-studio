@@ -149,13 +149,13 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, raw_cookies, aspect_rati
 
     cookie_file = prepare_cookie_file(raw_cookies)
 
-    # Konfigurasi native yt_dlp
+    # Konfigurasi native yt_dlp dengan js_runtimes format dictionary yang benar
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': temp_raw,
         'quiet': True,
         'no_warnings': True,
-        'js_runtimes': ['node'],
+        'js_runtimes': {'node': {}},
         'extractor_args': {
             'youtube': {
                 'player_client': ['web', 'mweb', 'android']
