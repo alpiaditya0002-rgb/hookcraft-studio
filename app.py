@@ -112,10 +112,11 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Menambahkan konfigurasi --js-runtimes node agar yt-dlp menggunakan Node.js untuk bypass tantangan YouTube
+    # Menggunakan argumen --js-runtimes node dan remote-components ejs agar solver aktif
     dl_command = [
         "yt-dlp",
         "--js-runtimes", "node",
+        "--remote-components", "ejs:github",
         "-f", "best[height<=720]/best",
         "--no-playlist",
         "--geo-bypass",
@@ -247,7 +248,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                         out_file = f"clip_{c_id}.mp4"
                         rendered_path = render_clip_ffmpeg(
                             st.session_state.current_url,
-                            clip["start"],
+                    clip["start"],
                             clip["end"],
                             aspect_ratio=resolution_choice,
                             output_filename=out_file
