@@ -4,6 +4,7 @@ import subprocess
 import time
 import json
 import google.generativeai as genai
+import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 from urllib.parse import urlparse, parse_qs
 
@@ -95,7 +96,6 @@ def prepare_cookie_file(raw_data):
     try:
         with open(cookie_file_path, "w", encoding="utf-8") as f:
             f.write("# Netscape HTTP Cookie File\n")
-            # Jika formatnya adalah key-value dipisah titik koma
             if ";" in raw_data and not raw_data.strip().startswith("#"):
                 pairs = raw_data.split(";")
                 for pair in pairs:
@@ -105,7 +105,6 @@ def prepare_cookie_file(raw_data):
                             name, value = parts
                             f.write(f".youtube.com\tTRUE\t/\tTRUE\t2147483647\t{name.strip()}\t{value.strip()}\n")
             else:
-                # Jika sudah berformat Netscape
                 f.write(raw_data)
         return cookie_file_path
     except Exception:
@@ -137,7 +136,7 @@ def analyze_with_gemini(url_input):
         ]
 
 # ==========================================
-# 4. RENDER ENGINE (YT-DLP DENGAN COOKIES & FFMPEG)
+# 4. RENDER ENGINE (NATIVE YT-DLP & FFMPEG)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, raw_cookies, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -150,28 +149,30 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, raw_cookies, aspect_rati
 
     cookie_file = prepare_cookie_file(raw_cookies)
 
-    dl_command = [
-        "yt-dlp",
-        "--js-runtimes", "node",
-        "--extractor-args", "youtube:player_client=web",
-    ]
+    # Konfigurasi native yt_dlp
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': temp_raw,
+        'quiet': True,
+        'no_warnings': True,
+        'js_runtimes': ['node'],
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['web', 'mweb', 'android']
+            }
+        }
+    }
 
     if cookie_file and os.path.exists(cookie_file):
-        dl_command.extend(["--cookies", cookie_file])
+        ydl_opts['cookiefile'] = cookie_file
 
-    dl_command.extend([
-        "-f", "b / bv+ba",
-        "--no-playlist",
-        "-o", temp_raw,
-        clean_url
-    ])
-    
     try:
-        subprocess.run(dl_command, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([clean_url])
+    except Exception as e:
         if cookie_file and os.path.exists(cookie_file):
             os.remove(cookie_file)
-        st.error(f"Gagal mengunduh video via yt-dlp. Detail: {e.stderr}")
+        st.error(f"Gagal mengunduh video via yt-dlp native. Detail: {e}")
         return None
 
     if cookie_file and os.path.exists(cookie_file):
