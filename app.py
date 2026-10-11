@@ -45,7 +45,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. RENDER ENGINE (FFMPEG + YT-DLP STABIL)
+# 2. RENDER ENGINE (BYPASS YOUTUBE BOT & FFMPEG)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -55,11 +55,12 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Unduh video penuh versi ringan (720p) agar stabil di Cloud
+    # Unduh video dengan parameter player_client android untuk tembus proteksi Cloud
     dl_command = [
         "yt-dlp",
         "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
         "--no-playlist",
+        "--extractor-args", "youtube:player_client=android",
         "-o", temp_raw,
         youtube_url
     ]
@@ -151,7 +152,6 @@ if analyze_btn or "analyzed_clips" in st.session_state:
         else:
             with st.spinner("🤖 AI sedang mengekstrak transkrip & mendeteksi 10 hook terbaik..."):
                 time.sleep(1.0)
-                # Timestamp & Draf Klip Optimal
                 st.session_state.analyzed_clips = [
                     {"id": 1, "title": "Rahasia Tersembunyi Efisiensi Otomasi", "start": "00:00:10", "end": "00:00:40", "score": 96, "cat": "🔥 Curiosity Hook"},
                     {"id": 2, "title": "Penyebab Utama Kegagalan Sistem Industrial", "start": "00:01:00", "end": "00:01:45", "score": 94, "cat": "💡 Knowledge/Daging"},
