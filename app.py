@@ -48,10 +48,21 @@ st.markdown(
 )
 
 # ==========================================
-# 2. INISIALISASI GEMINI AI & CEK SISTEM
+# 2. INISIALISASI GEMINI AI & SIDEBAR COOKIES
 # ==========================================
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+
+st.sidebar.subheader("🔐 Autentikasi YouTube (Bypass Bot)")
+cookie_input_method = st.sidebar.radio("Metode Input Cookies:", ["Paste Teks Cookies", "Upload File .txt"])
+
+cookie_raw_data = ""
+if cookie_input_method == "Paste Teks Cookies":
+    cookie_raw_data = st.sidebar.text_area("Tempel string cookies di sini:", placeholder="__Secure-3PSID=...; SAPISID=...")
+else:
+    uploaded_cookies = st.sidebar.file_uploader("Upload file cookies.txt", type=["txt"])
+    if uploaded_cookies is not None:
+        cookie_raw_data = uploaded_cookies.read().decode("utf-8")
 
 def check_system_tools():
     try:
@@ -61,7 +72,7 @@ def check_system_tools():
         return False
 
 # ==========================================
-# 3. HELPER URL & GEMINI ANALYZER
+# 3. HELPER URL, COOKIE CONVERTER & GEMINI
 # ==========================================
 def clean_youtube_url(url):
     parsed = urlparse(url)
@@ -74,6 +85,31 @@ def clean_youtube_url(url):
             video_id = qs['v'][0]
             return f"https://www.youtube.com/watch?v={video_id}"
     return url
+
+def prepare_cookie_file(raw_data):
+    """Mengonversi string cookies mentah menjadi Netscape format untuk yt-dlp"""
+    if not raw_data or not raw_data.strip():
+        return None
+    
+    cookie_file_path = "cookies_temp.txt"
+    try:
+        with open(cookie_file_path, "w", encoding="utf-8") as f:
+            f.write("# Netscape HTTP Cookie File\n")
+            # Jika formatnya adalah key-value dipisah titik koma
+            if ";" in raw_data and not raw_data.strip().startswith("#"):
+                pairs = raw_data.split(";")
+                for pair in pairs:
+                    if "=" in pair:
+                        parts = pair.strip().split("=", 1)
+                        if len(parts) == 2:
+                            name, value = parts
+                            f.write(f".youtube.com\tTRUE\t/\tTRUE\t2147483647\t{name.strip()}\t{value.strip()}\n")
+            else:
+                # Jika sudah berformat Netscape
+                f.write(raw_data)
+        return cookie_file_path
+    except Exception:
+        return None
 
 def analyze_with_gemini(url_input):
     try:
@@ -101,9 +137,9 @@ def analyze_with_gemini(url_input):
         ]
 
 # ==========================================
-# 4. RENDER ENGINE (YT-DLP WEB CLIENT & FFMPEG)
+# 4. RENDER ENGINE (YT-DLP DENGAN COOKIES & FFMPEG)
 # ==========================================
-def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
+def render_clip_ffmpeg(youtube_url, start_str, end_str, raw_cookies, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
     clean_url = clean_youtube_url(youtube_url)
     
@@ -112,22 +148,34 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Menggunakan Node.js runtime dan client web untuk bypass eksperimen SABR YouTube
+    cookie_file = prepare_cookie_file(raw_cookies)
+
     dl_command = [
         "yt-dlp",
         "--js-runtimes", "node",
         "--extractor-args", "youtube:player_client=web",
+    ]
+
+    if cookie_file and os.path.exists(cookie_file):
+        dl_command.extend(["--cookies", cookie_file])
+
+    dl_command.extend([
         "-f", "b / bv+ba",
         "--no-playlist",
         "-o", temp_raw,
         clean_url
-    ]
+    ])
     
     try:
         subprocess.run(dl_command, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
+        if cookie_file and os.path.exists(cookie_file):
+            os.remove(cookie_file)
         st.error(f"Gagal mengunduh video via yt-dlp. Detail: {e.stderr}")
         return None
+
+    if cookie_file and os.path.exists(cookie_file):
+        os.remove(cookie_file)
 
     if not os.path.exists(temp_raw) or os.path.getsize(temp_raw) == 0:
         st.error("File video gagal disimpan atau kosong.")
@@ -249,6 +297,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                             st.session_state.current_url,
                             clip["start"],
                             clip["end"],
+                            cookie_raw_data,
                             aspect_ratio=resolution_choice,
                             output_filename=out_file
                         )
