@@ -5,7 +5,7 @@ import time
 import json
 import google.generativeai as genai
 from youtube_transcript_api import YouTubeTranscriptApi
-from urllib.parse import urlparse, parse_qs, urlunparse
+from urllib.parse import urlparse, parse_qs
 
 # ==========================================
 # 1. KONFIGURASI HALAMAN & DUAL THEME
@@ -54,7 +54,7 @@ if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 def clean_youtube_url(url):
-    """Membersihkan URL YouTube dari parameter sampah/tracking agar bersih untuk yt-dlp"""
+    """Membersihkan URL YouTube dari parameter sampah/tracking"""
     parsed = urlparse(url)
     if parsed.netloc in ('youtu.be', 'www.youtu.be'):
         video_id = parsed.path.lstrip('/')
@@ -120,9 +120,10 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
+    # Strategi klien yt-dlp yang diperbarui agar lebih tahan banting di cloud
     client_strategies = [
+        ["--extractor-args", "youtube:player_client=mweb"],
         ["--extractor-args", "youtube:player_client=android"],
-        ["--extractor-args", "youtube:player_client=ios"],
         ["--extractor-args", "youtube:player_client=web"]
     ]
     
@@ -132,6 +133,7 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
             "yt-dlp",
             "-f", "best[height<=720]/best",
             "--no-playlist",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         ] + strategy + [
             "-o", temp_raw,
             clean_url
@@ -145,7 +147,7 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
             continue
             
     if not success_download:
-        st.error("Gagal mengunduh video dari YouTube. Pastikan link publik dan dapat diakses.")
+        st.error("Gagal mengunduh video dari YouTube. Pastikan link publik, tidak memiliki batasan umur (age-restricted), dan dapat diakses.")
         return None
 
     try:
@@ -244,7 +246,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                 <div class="clip-card">
                     <h3>🎬 Klip #{c_id}: {clip['title']} ({clip.get('cat', '🔥 Hook')})</h3>
                     <p><b>⏱️ Timestamp:</b> {clip['start']} - {clip['end']} | <b>🔥 Viral Score:</b> {clip.get('score', 90)}/100</p>
-                    <p><b>💬 Status:</b> Siap dipotong dan dirender ke format vertikal/persegi.</p>
+                    <p><b>💬 Status:</b> Siap dipotong dan dirender ke format pilihan Anda.</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
