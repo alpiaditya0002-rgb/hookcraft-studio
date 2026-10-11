@@ -48,13 +48,23 @@ st.markdown(
 )
 
 # ==========================================
-# 2. KONFIGURASI GEMINI AI & HELPER URL
+# 2. CEK STATUS FFMPEG & GEMINI AI
 # ==========================================
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
+def check_ffmpeg_installed():
+    """Memeriksa apakah FFmpeg aktif di server"""
+    try:
+        result = subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+# ==========================================
+# 3. HELPER URL & GEMINI ANALYZER
+# ==========================================
 def clean_youtube_url(url):
-    """Membersihkan URL YouTube dari parameter sampah/tracking"""
     parsed = urlparse(url)
     if parsed.netloc in ('youtu.be', 'www.youtu.be'):
         video_id = parsed.path.lstrip('/')
@@ -65,23 +75,6 @@ def clean_youtube_url(url):
             video_id = qs['v'][0]
             return f"https://www.youtube.com/watch?v={video_id}"
     return url
-
-def extract_youtube_id(url):
-    cleaned_url = clean_youtube_url(url)
-    parsed_url = urlparse(cleaned_url)
-    qs = parse_qs(parsed_url.query)
-    return qs.get('v', [None])[0]
-
-def get_video_transcript(youtube_url):
-    video_id = extract_youtube_id(youtube_url)
-    if not video_id:
-        return None
-    try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['id', 'en'])
-        full_text = " ".join([item['text'] for item in transcript_list])
-        return full_text
-    except Exception as e:
-        return None
 
 def analyze_with_gemini(url_input):
     try:
@@ -109,7 +102,7 @@ def analyze_with_gemini(url_input):
         ]
 
 # ==========================================
-# 3. RENDER ENGINE (ROBUST MULTI-CLIENT & FFMPEG)
+# 4. RENDER ENGINE (ROBUST YT-DLP & FFMPEG)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -120,37 +113,28 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Strategi klien yt-dlp yang diperbarui agar lebih tahan banting di cloud
-    client_strategies = [
-        ["--extractor-args", "youtube:player_client=mweb"],
-        ["--extractor-args", "youtube:player_client=android"],
-        ["--extractor-args", "youtube:player_client=web"]
+    # Menggunakan opsi yt-dlp dengan format universal aman dari blokir server
+    dl_command = [
+        "yt-dlp",
+        "-f", "best[ext=mp4]/best",
+        "--no-playlist",
+        "--geo-bypass",
+        "-o", temp_raw,
+        clean_url
     ]
     
-    success_download = False
-    for strategy in client_strategies:
-        dl_command = [
-            "yt-dlp",
-            "-f", "best[height<=720]/best",
-            "--no-playlist",
-            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        ] + strategy + [
-            "-o", temp_raw,
-            clean_url
-        ]
-        try:
-            subprocess.run(dl_command, check=True, capture_output=True, text=True)
-            if os.path.exists(temp_raw) and os.path.getsize(temp_raw) > 0:
-                success_download = True
-                break
-        except subprocess.CalledProcessError:
-            continue
-            
-    if not success_download:
-        st.error("Gagal mengunduh video dari YouTube. Pastikan link publik, tidak memiliki batasan umur (age-restricted), dan dapat diakses.")
+    try:
+        subprocess.run(dl_command, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        st.error(f"Gagal mengunduh video via yt-dlp. Detail: {e.stderr}")
+        return None
+
+    if not os.path.exists(temp_raw) or os.path.getsize(temp_raw) == 0:
+        st.error("File video gagal disimpan atau kosong.")
         return None
 
     try:
+        # Tentukan filter crop rasio aspek
         if "9:16" in aspect_ratio:
             vf_filter = "crop=in_h*9/16:in_h,scale=1080:1920"
         elif "1:1" in aspect_ratio:
@@ -158,6 +142,7 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
         else:
             vf_filter = "scale=1920:1080"
 
+        # Eksekusi pemotongan video menggunakan FFmpeg
         ffmpeg_command = [
             "ffmpeg", "-y",
             "-ss", start_str,
@@ -168,7 +153,7 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
             "-c:a", "aac",
             output_filename
         ]
-        subprocess.run(ffmpeg_command, check=True)
+        subprocess.run(ffmpeg_command, check=True, capture_output=True, text=True)
         
         if os.path.exists(temp_raw):
             os.remove(temp_raw)
@@ -179,7 +164,7 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
         return None
 
 # ==========================================
-# 4. HEADER & SETTINGS
+# 5. HEADER & STATUS SISTEM
 # ==========================================
 col_head1, col_head2 = st.columns([8, 2])
 with col_head1:
@@ -191,10 +176,16 @@ with col_head2:
         st.session_state.theme = theme_toggle
         st.rerun()
 
+# Indikator status FFmpeg di server
+if check_ffmpeg_installed():
+    st.sidebar.success("✅ FFmpeg Aktif di Server")
+else:
+    st.sidebar.error("❌ FFmpeg Belum Terdeteksi!")
+
 st.divider()
 
 # ==========================================
-# 5. INPUT & OPSI MULTI-FORMAT
+# 6. INPUT & OPSI MULTI-FORMAT
 # ==========================================
 st.subheader("🔗 Masukkan Tautan Video YouTube")
 url_input = st.text_input("Tempel link YouTube di sini:", placeholder="https://www.youtube.com/watch?v=...")
@@ -223,7 +214,7 @@ with col_opt3:
 analyze_btn = st.button("🚀 Ekstrak & Analisis Klip Terbaik via AI", type="primary", use_container_width=True)
 
 # ==========================================
-# 6. EKSEKUSI ANALISIS & RENDER
+# 7. EKSEKUSI ANALISIS & RENDER
 # ==========================================
 if analyze_btn or "analyzed_clips" in st.session_state:
     if analyze_btn:
@@ -246,7 +237,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                 <div class="clip-card">
                     <h3>🎬 Klip #{c_id}: {clip['title']} ({clip.get('cat', '🔥 Hook')})</h3>
                     <p><b>⏱️ Timestamp:</b> {clip['start']} - {clip['end']} | <b>🔥 Viral Score:</b> {clip.get('score', 90)}/100</p>
-                    <p><b>💬 Status:</b> Siap dipotong dan dirender ke format pilihan Anda.</p>
+                    <p><b>💬 Status:</b> Siap dipotong dan dirender menggunakan FFmpeg.</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -255,7 +246,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                     render_trigger = st.button(f"🎬 Render Klip #{c_id}", key=f"render_{c_id}", type="primary")
                 
                 if render_trigger:
-                    with st.spinner(f"⚡ FFmpeg sedang merender Klip #{c_id} ke format {resolution_choice}... Mohon tunggu!"):
+                    with st.spinner(f"⚡ FFmpeg sedang memotong & merender Klip #{c_id} ke format {resolution_choice}... Mohon tunggu!"):
                         out_file = f"clip_{c_id}.mp4"
                         rendered_path = render_clip_ffmpeg(
                             st.session_state.current_url,
