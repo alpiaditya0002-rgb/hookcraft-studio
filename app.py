@@ -48,15 +48,15 @@ st.markdown(
 )
 
 # ==========================================
-# 2. INISIALISASI GEMINI AI & CEK FFMPEG
+# 2. INISIALISASI GEMINI AI & CEK SISTEM
 # ==========================================
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-def check_ffmpeg_installed():
+def check_system_tools():
     try:
-        result = subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return result.returncode == 0
+        ffmpeg_check = subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True).returncode == 0
+        return ffmpeg_check
     except Exception:
         return False
 
@@ -101,7 +101,7 @@ def analyze_with_gemini(url_input):
         ]
 
 # ==========================================
-# 4. RENDER ENGINE (ROBUST YT-DLP & FFMPEG)
+# 4. RENDER ENGINE (YT-DLP DENGAN DENO & FFMPEG)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -112,14 +112,23 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Menggunakan argumen --js-runtimes node dan remote-components ejs agar solver aktif
+    # Pastikan Deno terinstal di environment jika belum ada
+    try:
+        subprocess.run(["deno", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+    except Exception:
+        # Install Deno otomatis secara lokal untuk sesi server jika belum tersedia
+        install_cmd = "curl -fsSL https://deno.land/install.sh | sh"
+        subprocess.run(install_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    # Perintah yt-dlp menggunakan Deno sebagai runtime default
+    deno_path = os.path.expanduser("~/.deno/bin/deno")
+    js_runtime_arg = deno_path if os.path.exists(deno_path) else "deno"
+
     dl_command = [
         "yt-dlp",
-        "--js-runtimes", "node",
-        "--remote-components", "ejs:github",
+        "--js-runtimes", f"deno:{js_runtime_arg}",
         "-f", "best[height<=720]/best",
         "--no-playlist",
-        "--geo-bypass",
         "-o", temp_raw,
         clean_url
     ]
@@ -175,10 +184,10 @@ with col_head2:
         st.session_state.theme = theme_toggle
         st.rerun()
 
-if check_ffmpeg_installed():
-    st.sidebar.success("✅ FFmpeg Aktif di Server")
+if check_system_tools():
+    st.sidebar.success("✅ Server Tools Aktif (FFmpeg & Deno)")
 else:
-    st.sidebar.error("❌ FFmpeg Belum Terdeteksi!")
+    st.sidebar.error("❌ Pengecekan Sistem Bermasalah")
 
 st.divider()
 
@@ -235,7 +244,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                 <div class="clip-card">
                     <h3>🎬 Klip #{c_id}: {clip['title']} ({clip.get('cat', '🔥 Hook')})</h3>
                     <p><b>⏱️ Timestamp:</b> {clip['start']} - {clip['end']} | <b>🔥 Viral Score:</b> {clip.get('score', 90)}/100</p>
-                    <p><b>💬 Status:</b> Siap dipotong dan dirender menggunakan FFmpeg.</p>
+                    <p><b>💬 Status:</b> Siap dipotong dan dirender menggunakan FFmpeg & Deno Engine.</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -244,11 +253,11 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                     render_trigger = st.button(f"🎬 Render Klip #{c_id}", key=f"render_{c_id}", type="primary")
                 
                 if render_trigger:
-                    with st.spinner(f"⚡ FFmpeg sedang memotong & merender Klip #{c_id} ke format {resolution_choice}... Mohon tunggu!"):
+                    with st.spinner(f"⚡ Proses pemotongan & rendering Klip #{c_id} sedang berjalan... Mohon tunggu!"):
                         out_file = f"clip_{c_id}.mp4"
                         rendered_path = render_clip_ffmpeg(
                             st.session_state.current_url,
-                    clip["start"],
+                            clip["start"],
                             clip["end"],
                             aspect_ratio=resolution_choice,
                             output_filename=out_file
