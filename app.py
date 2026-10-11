@@ -45,7 +45,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. RENDER ENGINE (BYPASS YOUTUBE BOT & FFMPEG)
+# 2. RENDER ENGINE (STABLE SINGLE FORMAT & IOS CLIENT)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -55,12 +55,12 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Unduh video dengan parameter player_client android untuk tembus proteksi Cloud
+    # Menggunakan single format & client ios agar aman di Cloud IP
     dl_command = [
         "yt-dlp",
-        "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        "-f", "best[height<=720]/best",
         "--no-playlist",
-        "--extractor-args", "youtube:player_client=android",
+        "--extractor-args", "youtube:player_client=ios",
         "-o", temp_raw,
         youtube_url
     ]
