@@ -48,7 +48,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. CEK STATUS FFMPEG & GEMINI AI
+# 2. INISIALISASI GEMINI AI & CEK FFMPEG
 # ==========================================
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -112,10 +112,11 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Menggunakan format universal tanpa pembatasan ekstensi agar yt-dlp lebih fleksibel
+    # Menambahkan konfigurasi --js-runtimes node agar yt-dlp menggunakan Node.js untuk bypass tantangan YouTube
     dl_command = [
         "yt-dlp",
-        "-f", "bv*[height<=720]+ba/b[height<=720] / bv*+ba/b",
+        "--js-runtimes", "node",
+        "-f", "best[height<=720]/best",
         "--no-playlist",
         "--geo-bypass",
         "-o", temp_raw,
