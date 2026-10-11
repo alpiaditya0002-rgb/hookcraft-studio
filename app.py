@@ -101,7 +101,7 @@ def analyze_with_gemini(url_input):
         ]
 
 # ==========================================
-# 4. RENDER ENGINE (YT-DLP DENGAN DENO & FFMPEG)
+# 4. RENDER ENGINE (YT-DLP UNIVERSAL FORMAT & FFMPEG)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -112,22 +112,15 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Pastikan Deno terinstal di environment jika belum ada
-    try:
-        subprocess.run(["deno", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-    except Exception:
-        # Install Deno otomatis secara lokal untuk sesi server jika belum tersedia
-        install_cmd = "curl -fsSL https://deno.land/install.sh | sh"
-        subprocess.run(install_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    # Perintah yt-dlp menggunakan Deno sebagai runtime default
+    # Deteksi Deno runtime untuk yt-dlp
     deno_path = os.path.expanduser("~/.deno/bin/deno")
-    js_runtime_arg = deno_path if os.path.exists(deno_path) else "deno"
+    js_runtime_arg = f"deno:{deno_path}" if os.path.exists(deno_path) else "deno"
 
+    # Menggunakan pemilih format universal agar yt-dlp fleksibel mengambil stream
     dl_command = [
         "yt-dlp",
-        "--js-runtimes", f"deno:{js_runtime_arg}",
-        "-f", "best[height<=720]/best",
+        "--js-runtimes", js_runtime_arg,
+        "-f", "b / bv+ba",
         "--no-playlist",
         "-o", temp_raw,
         clean_url
@@ -185,7 +178,7 @@ with col_head2:
         st.rerun()
 
 if check_system_tools():
-    st.sidebar.success("✅ Server Tools Aktif (FFmpeg & Deno)")
+    st.sidebar.success("✅ Server Tools Aktif (FFmpeg)")
 else:
     st.sidebar.error("❌ Pengecekan Sistem Bermasalah")
 
@@ -244,7 +237,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                 <div class="clip-card">
                     <h3>🎬 Klip #{c_id}: {clip['title']} ({clip.get('cat', '🔥 Hook')})</h3>
                     <p><b>⏱️ Timestamp:</b> {clip['start']} - {clip['end']} | <b>🔥 Viral Score:</b> {clip.get('score', 90)}/100</p>
-                    <p><b>💬 Status:</b> Siap dipotong dan dirender menggunakan FFmpeg & Deno Engine.</p>
+                    <p><b>💬 Status:</b> Siap dipotong dan dirender menggunakan FFmpeg.</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -253,7 +246,7 @@ if analyze_btn or "analyzed_clips" in st.session_state:
                     render_trigger = st.button(f"🎬 Render Klip #{c_id}", key=f"render_{c_id}", type="primary")
                 
                 if render_trigger:
-                    with st.spinner(f"⚡ Proses pemotongan & rendering Klip #{c_id} sedang berjalan... Mohon tunggu!"):
+                    with st.spinner(f"⚡ FFmpeg sedang memotong & merender Klip #{c_id} ke format {resolution_choice}... Mohon tunggu!"):
                         out_file = f"clip_{c_id}.mp4"
                         rendered_path = render_clip_ffmpeg(
                             st.session_state.current_url,
