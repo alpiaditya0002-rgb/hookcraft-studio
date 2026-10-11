@@ -101,7 +101,7 @@ def analyze_with_gemini(url_input):
         ]
 
 # ==========================================
-# 4. RENDER ENGINE (YT-DLP NODE.JS & FFMPEG)
+# 4. RENDER ENGINE (YT-DLP WEB CLIENT & FFMPEG)
 # ==========================================
 def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikTok/Reels/Shorts)", output_filename="viral_clip.mp4"):
     temp_raw = "temp_raw.mp4"
@@ -112,11 +112,11 @@ def render_clip_ffmpeg(youtube_url, start_str, end_str, aspect_ratio="9:16 (TikT
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    # Menggunakan Node.js sebagai runtime JS dan client android untuk menghindari error 403
+    # Menggunakan Node.js runtime dan client web untuk bypass eksperimen SABR YouTube
     dl_command = [
         "yt-dlp",
         "--js-runtimes", "node",
-        "--extractor-args", "youtube:player_client=android",
+        "--extractor-args", "youtube:player_client=web",
         "-f", "b / bv+ba",
         "--no-playlist",
         "-o", temp_raw,
